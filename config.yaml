@@ -1,138 +1,106 @@
-# SVbyEye Pipeline Configuration
-# Edit this file to set up your analysis!
+# SVbyEye pipeline configuration
+# Adjust the parameters in this file to describe the input data, prioritisation heuristics,
+# and resource requirements that apply to your analysis environment.
 
-# ============================================
-# INPUT FILES (YOU NEED TO EDIT THESE!)
-# ============================================
+# ---------------------------------------------------------------------------
+# Input data
+# ---------------------------------------------------------------------------
 
-# Your SD calls file (TSV/CSV format)
-# Should have columns: Sample, Haplotype, SD1_original, SD2_original, SD1_T2T, SD2_T2T, etc.
+# Path to the SD callset. The table must include Sample, Haplotype, SD1_original, and SD2_original.
+# Optional columns such as SD1_T2T, SD2_T2T, SD*_has_exon, and Gene_names enable additional filtering.
 sd_calls: "data/sd_calls.tsv"
 
-# Assembly FASTA files
-# These are your haplotype assemblies
+# Assembly FASTA specification. Provide either explicit mappings from sample/haplotype to files
+# or define a directory and filename template as shown below.
 assemblies:
-  # All assemblies are in one directory
   assembly_dir: "data/assemblies"
   assembly_pattern: "{sample}_{haplotype}.fasta"
 
-# Reference genome (optional, for T2T coordinates)
-# Set to null if you don't have it
+# Reference genome (optional). Required when coordinate_system is set to "t2t" or "auto".
 reference:
   fasta: null
 
-# ============================================
-# FILTERING OPTIONS
-# ============================================
+# ---------------------------------------------------------------------------
+# SD prioritisation and filtering
+# ---------------------------------------------------------------------------
 
-# Maximum number of SD pairs to visualize (start small!)
+# Maximum number of SD pairs to visualise in a single workflow execution.
 max_sds: 5
 
-# How to select which SDs to visualize
+# Configure prioritisation heuristics and inclusion criteria.
 filter:
-  # Priority: which SDs to pick first?
-  # Options: "genes", "size", "random"
-  # - "genes": Prioritize SDs with genes
-  # - "size": Largest SDs first
-  # - "random": Random selection
+  # Selection priority controls ordering after filtering. Options: "genes", "size", "random".
   priority: "genes"
 
-  # Filter by specific criteria (all are optional)
-  min_sd_size: 1000  # Minimum SD size in bp (set to 0 for no filter)
-  require_genes: false  # Only include SDs with genes? (true/false)
-  require_t2t_liftover: false  # Only include SDs that lifted to T2T? (true/false)
+  # Minimum average SD length (bp). Set to 0 to disable length filtering.
+  min_sd_size: 1000
 
-  # Filter by specific samples or haplotypes (optional)
-  # Leave empty to include all
-  samples: []  # e.g., ["UKS17D00107", "UKS17D00108"]
-  haplotypes: []  # e.g., ["hap1", "hap2"]
+  # Require evidence of gene content on either SD in the pair.
+  require_genes: false
 
-# ============================================
-# COORDINATE PREFERENCE
-# ============================================
+  # Require successful liftover to the reference coordinate system.
+  require_t2t_liftover: false
 
-# Which coordinates to use for sequence extraction?
-# Options: "contig", "t2t", "auto"
-# - "contig": Use original contig coordinates (SD1_original, SD2_original)
-# - "t2t": Use T2T coordinates (SD1_T2T, SD2_T2T) - requires reference fasta
-# - "auto": Try T2T first, fall back to contig if not available
+  # Optional restrictions to specific samples or haplotypes. Leave empty to include all values present in the callset.
+  samples: []
+  haplotypes: []
+
+# ---------------------------------------------------------------------------
+# Coordinate system selection
+# ---------------------------------------------------------------------------
+
+# Options:
+#   - "contig": always use SD*_original coordinates.
+#   - "t2t": always use SD*_T2T coordinates (requires reference.fasta).
+#   - "auto": prefer SD*_T2T when both pairs are available, otherwise fall back to contig coordinates.
 coordinate_system: "contig"
 
-# ============================================
-# ALIGNMENT PARAMETERS
-# ============================================
+# ---------------------------------------------------------------------------
+# Alignment parameters
+# ---------------------------------------------------------------------------
 
-# minimap2 settings for aligning SD1 vs SD2
+# minimap2 settings used by the alignment rule.
 minimap2:
-  preset: "asm20"  # Good for high-identity alignments
-  # Extra parameters (optional)
+  preset: "asm20"
   extra_params: "--eqx --secondary=no"
 
-# ============================================
-# VISUALIZATION PARAMETERS
-# ============================================
+# ---------------------------------------------------------------------------
+# Visualisation parameters
+# ---------------------------------------------------------------------------
 
-# SVbyEye plot settings
 svbyeye:
-  # Color scheme for alignments
-  # Options: "direction" (forward/reverse), "identity" (sequence similarity)
-  color_by: "direction"
-
-  # Bin size for binned plots (set to 0 for no binning)
-  # Binning shows average identity across bins
-  binsize: 1000
-
-  # Highlight insertions/deletions?
+  color_by: "direction"   # Use "identity" to colour by sequence identity.
+  binsize: 1000            # Set to 0 to disable binning.
   highlight_indels: true
-  min_deletion_size: 50  # bp
-  min_insertion_size: 50  # bp
-
-  # Output format
-  # Options: "png", "pdf", "both"
-  format: "both"
-
-  # Plot dimensions (inches)
+  min_deletion_size: 50
+  min_insertion_size: 50
+  format: "both"           # Options: "png", "pdf", "both".
   width: 12
   height: 8
-
-  # Resolution for PNG (dpi)
   dpi: 300
 
-# ============================================
-# ANNOTATIONS (OPTIONAL)
-# ============================================
-
-# Add gene annotations to plots?
+# Toggle to include gene annotations in future visualisation updates.
 add_gene_annotations: true
 
-# Gene annotation file (BED or GTF format)
-# Can be generated from your SD calls or provided separately
-gene_annotations: null  # Set path if you have a separate file
+# Optional gene annotation resource (BED or GTF). Leave null to disable.
+gene_annotations: null
 
-# ============================================
-# OUTPUT SETTINGS
-# ============================================
+# ---------------------------------------------------------------------------
+# Output management
+# ---------------------------------------------------------------------------
 
-# Output directory
 output_dir: "results"
-
-# Keep intermediate files?
-# If false, only keeps final plots and filtered SD list
 keep_intermediate: true
-
-# Generate summary report?
 generate_report: true
 
-# ============================================
-# COMPUTATIONAL RESOURCES
-# ============================================
+# ---------------------------------------------------------------------------
+# Execution resources
+# ---------------------------------------------------------------------------
 
-# Threads for parallel steps
 threads:
   minimap2: 4
   default: 1
 
-# Memory limits (optional, for cluster execution)
 memory:
   minimap2: "8G"
   default: "4G"
