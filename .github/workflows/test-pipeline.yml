@@ -75,6 +75,9 @@ jobs:
         if (!installed) {
           cat("WARNING: Could not install SVbyEye from GitHub\n")
           cat("This is OK - visualization tests will be skipped\n")
+        } else {
+          # Create marker file to indicate SVbyEye is available
+          system("mkdir -p results && touch results/.svbyeye_available")
         }
         '
 
@@ -260,8 +263,19 @@ jobs:
         ls results/alignments/*.paf 2>/dev/null | wc -l | xargs -I {} echo "  {} PAF files"
 
         echo "Plots:"
-        [ -d "results/plots" ] && echo "✓ plots/ exists" || echo "✗ plots/ missing"
-        ls results/plots/*.png 2>/dev/null | wc -l | xargs -I {} echo "  {} plot files"
+        if [ -f "results/.svbyeye_available" ]; then
+          # SVbyEye is available, plots should exist
+          [ -d "results/plots" ] && echo "✓ plots/ exists" || echo "✗ plots/ missing"
+          ls results/plots/*.png 2>/dev/null | wc -l | xargs -I {} echo "  {} plot files"
+        else
+          # SVbyEye not available, plots are optional
+          if [ -d "results/plots" ] && [ -n "$(ls -A results/plots/*.png 2>/dev/null)" ]; then
+            plot_count=$(ls results/plots/*.png 2>/dev/null | wc -l)
+            echo "✓ plots/ exists (${plot_count} files)"
+          else
+            echo "⚠ plots/ skipped (SVbyEye not available)"
+          fi
+        fi
 
         echo "Report:"
         [ -f "results/summary_report.html" ] && echo "✓ summary_report.html exists" || echo "✗ summary_report.html missing"
@@ -315,7 +329,14 @@ jobs:
         echo "SD pairs filtered: $([ -f results/filtered_sds.tsv ] && tail -n +2 results/filtered_sds.tsv | wc -l || echo 0)"
         echo "Sequences extracted: $(ls results/sequences/*.fa 2>/dev/null | wc -l)"
         echo "Alignments created: $(ls results/alignments/*.paf 2>/dev/null | wc -l)"
-        echo "Plots generated: $(ls results/plots/*.png 2>/dev/null | wc -l)"
+
+        if [ -f "results/.svbyeye_available" ]; then
+          echo "Plots generated: $(ls results/plots/*.png 2>/dev/null | wc -l)"
+        else
+          plot_count=$(ls results/plots/*.png 2>/dev/null | wc -l)
+          echo "Plots generated: ${plot_count} (SVbyEye not available, visualization skipped)"
+        fi
+
         echo ""
         echo "=================================="
         echo "✓ Pipeline test complete!"
