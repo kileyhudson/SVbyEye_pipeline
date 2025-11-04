@@ -15,27 +15,31 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Setup Mambaforge
+      uses: conda-incubator/setup-miniconda@v3
       with:
-        python-version: '3.9'
+        miniforge-variant: Mambaforge
+        miniforge-version: latest
+        activate-environment: pipeline
+        use-mamba: true
+
+    - name: Install dependencies with conda
+      shell: bash -el {0}
+      run: |
+        mamba install -y -c conda-forge -c bioconda \
+          python=3.9 \
+          snakemake=7.* \
+          "pulp<2.8" \
+          minimap2 \
+          samtools \
+          pandas \
+          pyyaml \
+          pysam
 
     - name: Set up R
       uses: r-lib/actions/setup-r@v2
       with:
         r-version: '4.3.0'
-
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y minimap2 samtools
-
-    - name: Install Python dependencies
-      run: |
-        pip install pandas pyyaml
-        pip install pysam  # For sequence extraction
-        # Install snakemake with compatible pulp version
-        pip install "pulp<2.8" "snakemake>=7.32,<8"
 
     - name: Install R dependencies
       run: |
@@ -53,6 +57,7 @@ jobs:
         Rscript -e 'library(SVbyEye); cat("SVbyEye version:", as.character(packageVersion("SVbyEye")), "\n")'
 
     - name: Verify tools are installed
+      shell: bash -el {0}
       run: |
         echo "=== Checking Python ==="
         python3 --version
@@ -70,6 +75,7 @@ jobs:
         snakemake --version
 
     - name: Test config file
+      shell: bash -el {0}
       run: |
         python3 -c "
         import yaml
@@ -81,6 +87,7 @@ jobs:
         "
 
     - name: Test SD filtering script
+      shell: bash -el {0}
       run: |
         python3 -c "
         import sys
@@ -111,6 +118,7 @@ jobs:
         head -n 3 results/test_filtered_sds.tsv
 
     - name: Test sequence extraction script
+      shell: bash -el {0}
       run: |
         python3 -c "
         import sys
@@ -143,6 +151,7 @@ jobs:
         ls -lh results/test_sequences/ | head -n 5
 
     - name: Test minimap2 alignment
+      shell: bash -el {0}
       run: |
         mkdir -p results/test_alignments
         minimap2 -x asm20 -c --eqx --secondary=no \
@@ -181,14 +190,17 @@ jobs:
         ls -lh results/test_plots/
 
     - name: Run full Snakemake pipeline (dry run)
+      shell: bash -el {0}
       run: |
         snakemake --dry-run --cores 1
 
     - name: Run full Snakemake pipeline
+      shell: bash -el {0}
       run: |
         snakemake --cores 2 --verbose
 
     - name: Verify pipeline outputs
+      shell: bash -el {0}
       run: |
         echo "=== Checking outputs ==="
 
@@ -233,6 +245,7 @@ jobs:
 
     - name: Check for errors in logs
       if: always()
+      shell: bash -el {0}
       run: |
         if [ -d "results/logs" ]; then
           echo "=== Checking for errors in logs ==="
@@ -241,6 +254,7 @@ jobs:
 
     - name: Pipeline summary
       if: always()
+      shell: bash -el {0}
       run: |
         echo "=================================="
         echo "Pipeline Test Summary"
