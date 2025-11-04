@@ -1,18 +1,16 @@
 #!/usr/bin/env Rscript
-#
-# Visualize SD pair using SVbyEye
-#
+# Visualise a segmental duplication pair using SVbyEye.
 
-# Suppress warnings
+# Suppress non-critical warnings to keep logs concise.
 options(warn = -1)
 
-# Load required libraries
+# Load required libraries.
 suppressPackageStartupMessages({
     library(SVbyEye)
     library(ggplot2)
 })
 
-# Get snakemake parameters
+# Retrieve snakemake parameters supplied by the workflow.
 paf_file <- snakemake@input[["paf"]]
 filtered_sds_file <- snakemake@input[["filtered_sds"]]
 output_plot <- snakemake@output[["plot"]]
@@ -20,27 +18,27 @@ sd_id <- snakemake@params[["sd_id"]]
 svbyeye_opts <- snakemake@params[["svbyeye_opts"]]
 add_genes <- snakemake@params[["add_genes"]]
 
-# Log
-cat("Visualizing", sd_id, "\n")
+# Log the primary inputs for traceability.
+cat("Rendering visualisation for", sd_id, "\n")
 cat("PAF file:", paf_file, "\n")
 cat("Output plot:", output_plot, "\n")
 
-# Read PAF file
+# Read the PAF alignments produced by minimap2.
 cat("Reading PAF alignments...\n")
 paf_table <- tryCatch({
     readPaf(paf.file = paf_file, include.paf.tags = TRUE, restrict.paf.tags = "cg")
 }, error = function(e) {
     cat("ERROR reading PAF file:", conditionMessage(e), "\n")
-    # Create empty PAF for plotting (indicates no alignment)
+    # Create empty structure to trigger placeholder plot generation.
     data.frame()
 })
 
-# Check if PAF is empty
+# Handle the case where no alignments were detected.
 if (nrow(paf_table) == 0) {
     cat("WARNING: No alignments found in PAF file!\n")
     cat("Creating placeholder plot...\n")
 
-    # Create a simple plot indicating no alignment
+    # Create a placeholder plot highlighting the absence of alignments.
     p <- ggplot() +
         annotate("text",
             x = 0.5, y = 0.5,
@@ -50,7 +48,7 @@ if (nrow(paf_table) == 0) {
         theme_void() +
         labs(title = paste("SD Pair:", sd_id))
 
-    # Save plot
+    # Persist the placeholder plot before exiting.
     ggsave(output_plot, plot = p, width = 12, height = 8, dpi = 300)
     cat("Saved placeholder plot to:", output_plot, "\n")
     quit(save = "no", status = 0)
@@ -58,7 +56,7 @@ if (nrow(paf_table) == 0) {
 
 cat("Found", nrow(paf_table), "alignment(s)\n")
 
-# Get visualization options
+# Extract visualisation parameters from the configuration block.
 color_by <- svbyeye_opts$color_by %||% "direction"
 binsize <- svbyeye_opts$binsize %||% 0
 highlight_indels <- svbyeye_opts$highlight_indels %||% FALSE
@@ -68,7 +66,7 @@ plot_width <- svbyeye_opts$width %||% 12
 plot_height <- svbyeye_opts$height %||% 8
 plot_dpi <- svbyeye_opts$dpi %||% 300
 
-# Create base plot
+# Initialise the parameter list passed to SVbyEye.
 cat("Creating SVbyEye plot...\n")
 
 plot_params <- list(
@@ -76,19 +74,19 @@ plot_params <- list(
     color.by = color_by
 )
 
-# Add binning if requested
+# Add binning when explicitly configured.
 if (binsize > 0) {
     plot_params$binsize <- binsize
 }
 
-# Add indel highlighting if requested
+# Enable structural variant highlighting when requested.
 if (highlight_indels) {
     plot_params$min.deletion.size <- min_del_size
     plot_params$min.insertion.size <- min_ins_size
     plot_params$highlight.sv <- "outline"
 }
 
-# Create plot
+# Generate the SVbyEye plot and fall back to defaults if necessary.
 plt <- tryCatch({
     do.call(plotMiro, plot_params)
 }, error = function(e) {
@@ -97,7 +95,7 @@ plt <- tryCatch({
     plotMiro(paf.table = paf_table)
 })
 
-# Add title with SD info
+# Annotate the plot with metadata describing the SD pair.
 filtered_sds <- read.table(filtered_sds_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 sd_info <- filtered_sds[filtered_sds$SD_ID == sd_id, ]
 
@@ -108,7 +106,7 @@ if (nrow(sd_info) > 0) {
         "\nSD2: ", sd_info$SD2_original
     )
 
-    # Add gene info if available
+    # Append gene information when present in the metadata.
     if ("Gene_names" %in% colnames(sd_info) && !is.na(sd_info$Gene_names) && sd_info$Gene_names != "None") {
         title_text <- paste0(title_text, "\nGenes: ", sd_info$Gene_names)
     }
@@ -116,9 +114,8 @@ if (nrow(sd_info) > 0) {
     plt <- plt + labs(title = title_text)
 }
 
-# Add gene annotations if requested
+# Report planned gene-annotation support when requested.
 if (add_genes && nrow(sd_info) > 0) {
-    # Check if either SD has genes
     has_genes <- FALSE
     if ("SD1_has_exon" %in% colnames(sd_info) && !is.na(sd_info$SD1_has_exon)) {
         has_genes <- has_genes || sd_info$SD1_has_exon
@@ -133,13 +130,13 @@ if (add_genes && nrow(sd_info) > 0) {
     }
 }
 
-# Apply theme adjustments
+# Apply minimal theming for consistency across outputs.
 plt <- plt + theme(
     plot.title = element_text(size = 10, hjust = 0),
     legend.position = "bottom"
 )
 
-# Save plot
+# Write the plot to disk.
 cat("Saving plot to:", output_plot, "\n")
 ggsave(
     output_plot,
@@ -149,4 +146,4 @@ ggsave(
     dpi = plot_dpi
 )
 
-cat("Done!\n")
+cat("Visualisation complete.\n")
