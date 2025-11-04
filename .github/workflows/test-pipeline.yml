@@ -32,8 +32,10 @@ jobs:
 
     - name: Install Python dependencies
       run: |
-        pip install pandas pyyaml snakemake
+        pip install pandas pyyaml
         pip install pysam  # For sequence extraction
+        # Install snakemake with compatible pulp version
+        pip install "pulp<2.8" "snakemake>=7.32,<8"
 
     - name: Install R dependencies
       run: |
