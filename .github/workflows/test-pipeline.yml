@@ -46,47 +46,20 @@ jobs:
         Rscript -e 'install.packages("BiocManager", repos="https://cloud.r-project.org")'
         Rscript -e 'BiocManager::install(c("GenomicRanges", "IRanges", "Biostrings", "GenomeInfoDb"))'
         Rscript -e 'install.packages("ggplot2", repos="https://cloud.r-project.org")'
-        Rscript -e 'install.packages("remotes", repos="https://cloud.r-project.org")'
+        Rscript -e 'install.packages("devtools", repos="https://cloud.r-project.org")'
 
     - name: Install SVbyEye
-      continue-on-error: true
       run: |
-        # SVbyEye might not be publicly available, try multiple sources
         Rscript -e '
-        # Try different possible locations
-        repos <- c(
-          "daewoooo/SVbyEye",
-          "davidporubsky/SVbyEye",
-          "marbl/SVbyEye"
-        )
-
-        installed <- FALSE
-        for (repo in repos) {
-          tryCatch({
-            cat("Trying", repo, "...\n")
-            remotes::install_github(repo, quiet=TRUE)
-            installed <- TRUE
-            break
-          }, error = function(e) {
-            cat("Failed:", repo, "\n")
-          })
-        }
-
-        if (!installed) {
-          cat("WARNING: Could not install SVbyEye from GitHub\n")
-          cat("This is OK - visualization tests will be skipped\n")
-        }
+        library(devtools)
+        install_github("daewoooo/SVbyEye", branch="master")
         '
 
     - name: Verify SVbyEye installation
-      continue-on-error: true
       run: |
         Rscript -e '
-        if (require("SVbyEye", quietly = TRUE)) {
-          cat("✓ SVbyEye version:", as.character(packageVersion("SVbyEye")), "\n")
-        } else {
-          cat("⚠ SVbyEye not available - visualization tests will be skipped\n")
-        }
+        library(SVbyEye)
+        cat("✓ SVbyEye version:", as.character(packageVersion("SVbyEye")), "\n")
         '
 
     - name: Verify tools are installed
@@ -196,16 +169,11 @@ jobs:
         echo "Alignment has $(grep -v '^\\[' results/test_alignments/SD_00000.paf | wc -l) alignment records"
 
     - name: Test SVbyEye visualization
-      continue-on-error: true
       run: |
         mkdir -p results/test_plots
 
         Rscript -e '
-        if (!require("SVbyEye", quietly = TRUE)) {
-          cat("⚠ SVbyEye not installed, skipping visualization test\n")
-          quit(save = "no", status = 0)
-        }
-
+        library(SVbyEye)
         library(ggplot2)
 
         # Read PAF
@@ -224,12 +192,8 @@ jobs:
         cat("✓ Plot saved!\n")
         '
 
-        if [ -f "results/test_plots/test_plot.png" ]; then
-          echo "✓ SVbyEye visualization works!"
-          ls -lh results/test_plots/
-        else
-          echo "⚠ SVbyEye visualization skipped (package not available)"
-        fi
+        echo "✓ SVbyEye visualization works!"
+        ls -lh results/test_plots/
 
     - name: Run full Snakemake pipeline (dry run)
       shell: bash -el {0}
@@ -237,11 +201,9 @@ jobs:
         snakemake --dry-run --cores 1
 
     - name: Run full Snakemake pipeline
-      continue-on-error: true
       shell: bash -el {0}
       run: |
-        # May fail if SVbyEye not available, but will test filtering/extraction/alignment
-        snakemake --cores 2 --verbose || echo "⚠ Pipeline completed with errors (likely SVbyEye visualization)"
+        snakemake --cores 2 --verbose
 
     - name: Verify pipeline outputs
       shell: bash -el {0}
