@@ -1,0 +1,24 @@
+# Output directories
+results/
+*.pyc
+__pycache__/
+
+# R files
+.Rhistory
+.RData
+.Rproj.user
+
+# Python
+*.egg-info/
+dist/
+build/
+
+# System files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.log
