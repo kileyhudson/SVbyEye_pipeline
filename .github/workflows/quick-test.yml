@@ -62,9 +62,10 @@ jobs:
 
     - name: Validate Snakefile syntax
       run: |
-        # Just check Python syntax, full snakemake tested in test-pipeline.yml
-        python3 -m py_compile Snakefile
-        echo "✓ Snakefile syntax OK"
+        # Snakefile uses special syntax that py_compile can't handle
+        # Full snakemake validation happens in test-pipeline.yml
+        echo "✓ Snakefile validation skipped (requires snakemake)"
+        echo "  (Full snakemake test runs in test-pipeline workflow)"
 
     - name: Test data exists
       run: |
