@@ -167,7 +167,11 @@ rule collect_plots:
     shell:
         """
         echo "Generated {input} plots" > {output}
-        ls {OUTPUT_DIR}/plots/*.png >> {output}
+        if compgen -G "{OUTPUT_DIR}/plots/*.png" > /dev/null; then
+            ls {OUTPUT_DIR}/plots/*.png >> {output}
+        else
+            echo "No plot files were generated." >> {output}
+        fi
         """
 
 # ---------------------------------------------------------------------------
