@@ -1,0 +1,80 @@
+name: Quick Tests
+
+on:
+  push:
+    branches: [ claude/* ]
+  pull_request:
+
+jobs:
+  quick-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Python dependencies
+      run: |
+        pip install pandas pyyaml pysam
+        # Skip snakemake - tested in full pipeline workflow
+
+    - name: Validate YAML files
+      run: |
+        python3 -c "
+        import yaml
+        import sys
+
+        files = ['config.yaml', '.github/workflows/test-pipeline.yml', '.github/workflows/quick-test.yml']
+        for f in files:
+            try:
+                with open(f, 'r') as file:
+                    yaml.safe_load(file)
+                print(f'✓ {f} is valid YAML')
+            except Exception as e:
+                print(f'✗ {f} has YAML errors: {e}')
+                sys.exit(1)
+        "
+
+    - name: Check Python scripts syntax
+      run: |
+        for script in scripts/*.py; do
+          python3 -m py_compile "$script"
+          echo "✓ $script syntax OK"
+        done
+
+    - name: Check R scripts syntax
+      uses: r-lib/actions/setup-r@v2
+      with:
+        r-version: '4.3.0'
+
+    - name: Validate R scripts
+      run: |
+        for script in scripts/*.R install_svbyeye*.R; do
+          if [ -f "$script" ]; then
+            Rscript -e "parse('$script')" && echo "✓ $script syntax OK" || exit 1
+          fi
+        done
+
+    - name: Validate Snakefile syntax
+      run: |
+        # Snakefile uses special syntax that py_compile can't handle
+        # Full snakemake validation happens in test-pipeline.yml
+        echo "✓ Snakefile validation skipped (requires snakemake)"
+        echo "  (Full snakemake test runs in test-pipeline workflow)"
+
+    - name: Test data exists
+      run: |
+        [ -f "data/sd_calls.tsv" ] && echo "✓ SD calls file exists" || exit 1
+        [ -d "data/assemblies" ] && echo "✓ Assemblies directory exists" || exit 1
+        ls data/assemblies/*.fasta | wc -l | xargs -I {} echo "  {} assembly files found"
+
+    - name: Summary
+      run: |
+        echo "=================================="
+        echo "Quick validation passed!"
+        echo "=================================="
