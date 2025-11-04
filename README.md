@@ -1,5 +1,7 @@
 # SVbyEye Pipeline for Segmental Duplications
 
+[![Test Pipeline](https://github.com/kileyhudson/SVbyEye_pipeline/actions/workflows/test-pipeline.yml/badge.svg)](https://github.com/kileyhudson/SVbyEye_pipeline/actions/workflows/test-pipeline.yml)
+
 ## What This Pipeline Does
 
 This pipeline visualizes segmental duplication (SD) pairs using SVbyEye. It:
@@ -117,6 +119,32 @@ SVbyEye_pipeline/
     ├── alignments/
     └── plots/
 ```
+
+## Testing with GitHub Actions (Recommended!)
+
+**Don't want to install everything locally?** Let GitHub Actions do it for you!
+
+The pipeline has automated CI/CD testing that:
+- ✅ Installs ALL dependencies
+- ✅ Runs the complete pipeline on test data
+- ✅ Creates plots and reports
+- ✅ Uploads results for you to download
+
+### How to use it:
+
+1. **Push your code** to GitHub (it's already set up!)
+2. **Go to Actions tab** in your GitHub repo
+3. **Click "Test SVbyEye Pipeline"**
+4. **Click "Run workflow"** → Select your branch → Run
+5. **Wait ~10 minutes** for it to complete
+6. **Download artifacts** to see the plots!
+
+### What you get:
+
+- `pipeline-results.zip` - All plots, reports, and logs
+- `test-plots.zip` - Individual test visualizations
+
+This way you can see if everything works WITHOUT installing anything locally first! 🎉
 
 ## Next Steps
 
