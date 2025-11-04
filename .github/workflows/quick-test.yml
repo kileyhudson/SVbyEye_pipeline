@@ -20,7 +20,8 @@ jobs:
 
     - name: Install Python dependencies
       run: |
-        pip install pandas pyyaml snakemake pysam
+        pip install pandas pyyaml pysam
+        # Skip snakemake - tested in full pipeline workflow
 
     - name: Validate YAML files
       run: |
@@ -59,9 +60,11 @@ jobs:
           fi
         done
 
-    - name: Validate Snakefile
+    - name: Validate Snakefile syntax
       run: |
-        snakemake --lint
+        # Just check Python syntax, full snakemake tested in test-pipeline.yml
+        python3 -m py_compile Snakefile
+        echo "✓ Snakefile syntax OK"
 
     - name: Test data exists
       run: |
