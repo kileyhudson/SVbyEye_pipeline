@@ -5,243 +5,101 @@ on:
     branches: [ main, claude/* ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
 
 jobs:
   test-pipeline:
     runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        shell: bash
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libfontconfig1-dev \
+          libfreetype6-dev \
+          libpng-dev \
+          libjpeg-dev \
+          libxml2-dev \
+          libcurl4-openssl-dev \
+          libssl-dev \
+          libharfbuzz-dev \
+          libfribidi-dev
 
     - name: Setup Miniforge
       uses: conda-incubator/setup-miniconda@v3
       with:
         miniforge-variant: Miniforge3
         miniforge-version: latest
-        activate-environment: pipeline
+        activate-environment: svbyeye_pipeline
+        environment-file: environment.yml
         use-mamba: true
+        auto-activate-base: false
 
-    - name: Set up Conda environment
-      shell: bash -el {0}
+    - name: Install SVbyEye
+      run: Rscript install_svbyeye_github.R
+
+    - name: Verify installation
       run: |
-        CONDA_BASE="$(conda info --base)"
-        source "${CONDA_BASE}/etc/profile.d/conda.sh"
-        conda config --set channel_priority strict
-        mamba env create -f environment.yml
-        conda activate svbyeye_pipeline
-        Rscript install_svbyeye_github.R
-        conda deactivate
-
-    - name: Verify tools are installed
-      shell: bash -el {0}
-      run: |
-        CONDA_BASE="$(conda info --base)"
-        source "${CONDA_BASE}/etc/profile.d/conda.sh"
-        conda activate svbyeye_pipeline
-
-        echo "=== Checking Python ==="
         python --version
-
-        echo "=== Checking R ==="
-        R --version | head -n 1
-
-        echo "=== Checking snakemake ==="
+        R --version
         snakemake --version
+        Rscript -e "library(SVbyEye); cat('SVbyEye version:', as.character(packageVersion('SVbyEye')), '\n')"
 
-        conda deactivate
+    - name: Validate config
+      run: python -c "import yaml; yaml.safe_load(open('config.yaml')); print('✓ Config valid')"
 
-    - name: Test config file
-      shell: bash -el {0}
+    - name: Create test data
+      run: python scripts/create_test_data.py
+
+    - name: Dry run pipeline
+      run: snakemake --dry-run --cores 1
+
+    - name: Run full pipeline
+      run: snakemake --cores 2
+
+    - name: Verify outputs
       run: |
-        CONDA_BASE="$(conda info --base)"
-        source "${CONDA_BASE}/etc/profile.d/conda.sh"
-        conda activate svbyeye_pipeline
-        python - <<'PY'
-import yaml
-with open("config.yaml", "r", encoding="utf-8") as handle:
-    config = yaml.safe_load(handle)
-print("✓ Config file is valid YAML")
-print("  SD calls:", config.get("sd_calls"))
-PY
-        conda deactivate
+        echo "=== Pipeline Outputs ==="
+        ls -lh results/sd_table.tsv
+        ls -lh results/alignment_manifest.tsv
+        ls -lh results/plots/
+        ls -lh results/summary_report.html
+        echo "✓ All expected files created"
 
-    - name: Test SD table preparation script
-      shell: bash -el {0}
+    - name: Check plot generation
       run: |
-        CONDA_BASE="$(conda info --base)"
-        source "${CONDA_BASE}/etc/profile.d/conda.sh"
-        conda activate svbyeye_pipeline
-        python - <<'PY'
-import os
+        PLOT_COUNT=$(ls results/plots/*.png 2>/dev/null | wc -l)
+        echo "Plots generated: $PLOT_COUNT"
+        test "$PLOT_COUNT" -gt 0 || exit 1
+        echo "✓ Plot generation successful"
 
-class Snakemake:
-    class Input:
-        sd_calls = 'data/sd_calls.tsv'
-    class Output:
-        table = 'results/test_sd_table.tsv'
-        summary = 'results/test_sd_summary.txt'
-    input = Input()
-    output = Output()
+    - name: Display summary
+      if: always()
+      run: test -f results/sd_summary.txt && cat results/sd_summary.txt || echo "No summary file"
 
-snakemake = Snakemake()
-os.makedirs('results', exist_ok=True)
-
-exec(open('scripts/prepare_sd_table.py', encoding='utf-8').read())
-PY
-        conda deactivate
-
-        echo "✓ SD table preparation works!"
-        head -n 3 results/test_sd_table.tsv
-
-    - name: Test alignment manifest script
-      shell: bash -el {0}
-      run: |
-        cp results/test_sd_table.tsv data/test_sd_table.tsv
-        CONDA_BASE="$(conda info --base)"
-        source "${CONDA_BASE}/etc/profile.d/conda.sh"
-        conda activate svbyeye_pipeline
-        python - <<'PY'
-class Snakemake:
-    class Input:
-        sd_table = 'data/test_sd_table.tsv'
-    class Output:
-        manifest = 'results/test_alignment_manifest.tsv'
-    class Params:
-        alignments = {
-            'dir': 'data/alignments',
-            'filename_pattern': '{sd_id}.paf'
-        }
-    input = Input()
-    output = Output()
-    params = Params()
-
-snakemake = Snakemake()
-
-exec(open('scripts/prepare_alignment_manifest.py', encoding='utf-8').read())
-PY
-        conda deactivate
-
-        echo "✓ Alignment manifest generation works!"
-        head -n 3 results/test_alignment_manifest.tsv
-
-    - name: Test SVbyEye visualization
-      shell: bash -el {0}
-      run: |
-        mkdir -p results/test_plots
-        CONDA_BASE="$(conda info --base)"
-        source "${CONDA_BASE}/etc/profile.d/conda.sh"
-        conda activate svbyeye_pipeline
-        Rscript -e '
-        library(SVbyEye)
-        library(ggplot2)
-
-        paf_file <- "data/alignments/SD_00000.paf"
-        cat("Reading PAF file...\n")
-        paf_table <- readPaf(paf.file = paf_file, include.paf.tags = TRUE, restrict.paf.tags = "cg")
-        cat("Found", nrow(paf_table), "alignments\n")
-
-        cat("Creating plot...\n")
-        plt <- plotMiro(paf.table = paf_table, color.by = "direction")
-        plt <- plt + labs(title = "Test SD Visualization")
-
-        ggsave("results/test_plots/test_plot.png", plot = plt, width = 12, height = 8, dpi = 150)
-        cat("✓ Plot saved!\n")
-        '
-        conda deactivate
-
-        echo "✓ SVbyEye visualization works!"
-        ls -lh results/test_plots/
-
-    - name: Run full Snakemake pipeline (dry run)
-      shell: bash -el {0}
-      run: |
-        CONDA_BASE="$(conda info --base)"
-        source "${CONDA_BASE}/etc/profile.d/conda.sh"
-        conda activate svbyeye_pipeline
-        snakemake --dry-run --cores 1
-        conda deactivate
-
-    - name: Run full Snakemake pipeline
-      shell: bash -el {0}
-      run: |
-        CONDA_BASE="$(conda info --base)"
-        source "${CONDA_BASE}/etc/profile.d/conda.sh"
-        conda activate svbyeye_pipeline
-        snakemake --cores 2 --verbose
-        conda deactivate
-
-    - name: Verify pipeline outputs
-      shell: bash -el {0}
-      run: |
-        echo "=== Checking outputs ==="
-
-        echo "SD table:"
-        [ -f "results/sd_table.tsv" ] && echo "✓ sd_table.tsv exists" || echo "✗ sd_table.tsv missing"
-        [ -f "results/sd_summary.txt" ] && echo "✓ sd_summary.txt exists" || echo "✗ sd_summary.txt missing"
-
-        echo "Alignment manifest:"
-        [ -f "results/alignment_manifest.tsv" ] && echo "✓ alignment_manifest.tsv exists" || echo "✗ alignment_manifest.tsv missing"
-
-        echo "Plots:"
-        [ -d "results/plots" ] && echo "✓ plots/ exists" || echo "✗ plots/ missing"
-        ls results/plots/*.png 2>/dev/null | wc -l | xargs -I {} echo "  {} plot files"
-
-        echo "Report:"
-        [ -f "results/summary_report.html" ] && echo "✓ summary_report.html exists" || echo "✗ summary_report.html missing"
-
-    - name: Upload pipeline results
+    - name: Upload results
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: pipeline-results
-        path: |
-          results/sd_table.tsv
-          results/sd_summary.txt
-          results/alignment_manifest.tsv
-          results/plots/
-          results/summary_report.html
-          results/logs/
-        retention-days: 7
-
-    - name: Upload test plots
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-plots
-        path: results/test_plots/
+        path: results/
         retention-days: 7
 
     - name: Check for errors in logs
       if: always()
-      shell: bash -el {0}
       run: |
         if [ -d "results/logs" ]; then
-          echo "=== Checking for errors in logs ==="
-          grep -i error results/logs/*.log 2>/dev/null || echo "No errors found in logs"
+          if grep -qi error results/logs/*.log 2>/dev/null; then
+            echo "✗ Errors found in logs"
+            exit 1
+          fi
+          echo "✓ No errors in logs"
         fi
-
-    - name: Pipeline summary
-      if: always()
-      shell: bash -el {0}
-      run: |
-        echo "=================================="
-        echo "Pipeline Test Summary"
-        echo "=================================="
-
-        if [ -f "results/sd_summary.txt" ]; then
-          echo ""
-          echo "=== SD Summary ==="
-          cat results/sd_summary.txt
-        fi
-
-        echo ""
-        echo "=== Final File Count ==="
-        echo "SD pairs processed: $([ -f results/sd_table.tsv ] && tail -n +2 results/sd_table.tsv | wc -l || echo 0)"
-        echo "Alignment manifest entries: $([ -f results/alignment_manifest.tsv ] && tail -n +2 results/alignment_manifest.tsv | wc -l || echo 0)"
-        echo "Plots generated: $(ls results/plots/*.png 2>/dev/null | wc -l)"
-        echo ""
-        echo "=================================="
-        echo "✓ Pipeline test complete!"
-        echo "=================================="
