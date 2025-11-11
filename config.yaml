@@ -14,7 +14,7 @@ sd_calls: "data/sd_calls.tsv"
 # `filename_pattern` supports formatting fields: {sd_id}, {sample}, {haplotype}.
 alignments:
   dir: "data/alignments"
-  filename_pattern: "{sd_id}.paf"
+  filename_pattern: "{sample}_{haplotype}_alignments.paf"
 
 # ---------------------------------------------------------------------------
 # Visualisation parameters
