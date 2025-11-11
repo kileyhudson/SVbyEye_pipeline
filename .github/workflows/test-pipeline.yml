@@ -46,7 +46,7 @@ jobs:
     - name: Install SVbyEye
       env:
         GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      run: Rscript install_svbyeye_github.R
+      run: Rscript install_svbyeye.R
 
     - name: Verify installation
       run: |
