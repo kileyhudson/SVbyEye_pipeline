@@ -6,37 +6,24 @@
 
 configfile: "config.yaml"
 
+import csv
 import os
-import pandas as pd
 
 # ---------------------------------------------------------------------------
 # Global variables
 # ---------------------------------------------------------------------------
 
 OUTPUT_DIR = config.get("output_dir", "results")
-
-# ---------------------------------------------------------------------------
-# Helper functions
-# ---------------------------------------------------------------------------
-
-def get_all_sd_ids(wildcards):
-    """Return all SD identifiers recorded in the filtered list."""
-    filtered_file = f"{OUTPUT_DIR}/filtered_sds.tsv"
-    if os.path.exists(filtered_file):
-        df = pd.read_csv(filtered_file, sep="\t")
-        return df['SD_ID'].tolist()
-    return []
+SD_TABLE = f"{OUTPUT_DIR}/sd_table.tsv"
 
 # ---------------------------------------------------------------------------
 # Target rules
 # ---------------------------------------------------------------------------
 
 rule all:
-    """Default target that generates filtered tables and the summary report."""
+    """Default target that generates the SD table and summary report."""
     input:
-        # Filtered SD list
-        filtered_sds = f"{OUTPUT_DIR}/filtered_sds.tsv",
-        # Summary report
+        sd_table = SD_TABLE,
         report = f"{OUTPUT_DIR}/summary_report.html" if config.get("generate_report", True) else []
 
 rule all_plots:
@@ -48,86 +35,44 @@ rule all_plots:
 # Filtering rules
 # ---------------------------------------------------------------------------
 
-rule filter_sds:
-    """Filter the SD callset and compute prioritisation metrics."""
+rule prepare_sd_table:
+    """Attach SD identifiers and derived columns without filtering."""
     input:
         sd_calls = config["sd_calls"]
     output:
-        filtered = f"{OUTPUT_DIR}/filtered_sds.tsv",
-        stats = f"{OUTPUT_DIR}/filtering_stats.txt"
-    params:
-        max_sds = config.get("max_sds", 20),
-        filter_opts = config.get("filter", {}),
-        coord_system = config.get("coordinate_system", "auto")
+        table = SD_TABLE,
+        summary = f"{OUTPUT_DIR}/sd_summary.txt"
     log:
-        f"{OUTPUT_DIR}/logs/filter_sds.log"
+        f"{OUTPUT_DIR}/logs/prepare_sd_table.log"
     script:
-        "scripts/filter_sds.py"
+        "scripts/prepare_sd_table.py"
 
 # ---------------------------------------------------------------------------
-# Sequence extraction
+# Alignment manifest
 # ---------------------------------------------------------------------------
 
-checkpoint extract_all_sequences:
-    """Extract sequences for all filtered SD pairs."""
+checkpoint prepare_alignment_manifest:
+    """Validate PAF availability and record file paths per SD."""
     input:
-        filtered_sds = rules.filter_sds.output.filtered,
-        assemblies = []  # Assembly files will be found dynamically
+        sd_table = SD_TABLE
     output:
-        sequence_dir = directory(f"{OUTPUT_DIR}/sequences"),
-        manifest = f"{OUTPUT_DIR}/sequence_manifest.txt"
+        manifest = f"{OUTPUT_DIR}/alignment_manifest.tsv"
     params:
-        assemblies = config.get("assemblies", {}),
-        reference = config.get("reference", {}),
-        coord_system = config.get("coordinate_system", "auto")
+        alignments = config.get("alignments", {})
     log:
-        f"{OUTPUT_DIR}/logs/extract_sequences.log"
+        f"{OUTPUT_DIR}/logs/prepare_alignment_manifest.log"
     script:
-        "scripts/extract_sequences.py"
+        "scripts/prepare_alignment_manifest.py"
 
-rule get_sd_ids:
-    """Write SD identifiers to a manifest supporting downstream rules."""
-    input:
-        rules.extract_all_sequences.output.manifest
-    output:
-        f"{OUTPUT_DIR}/sd_ids.txt"
-    shell:
-        """
-        cut -f1 {input} | tail -n +2 > {output}
-        """
-
-# ---------------------------------------------------------------------------
-# Alignment
-# ---------------------------------------------------------------------------
-
-def get_sd_sequences(wildcards):
-    """Return the FASTA paths for a specific SD pair."""
-    manifest = checkpoints.extract_all_sequences.get().output.manifest
-    df = pd.read_csv(manifest, sep="\t")
-    row = df[df['SD_ID'] == wildcards.sd_id].iloc[0]
-    return {
-        "seq1": row['SD1_fasta'],
-        "seq2": row['SD2_fasta']
-    }
-
-rule align_sd_pair:
-    """Align the two SD sequences using minimap2."""
-    input:
-        unpack(get_sd_sequences)
-    output:
-        paf = f"{OUTPUT_DIR}/alignments/{{sd_id}}.paf"
-    params:
-        preset = config.get("minimap2", {}).get("preset", "asm20"),
-        extra = config.get("minimap2", {}).get("extra_params", "--eqx --secondary=no")
-    threads:
-        config.get("threads", {}).get("minimap2", 4)
-    log:
-        f"{OUTPUT_DIR}/logs/align_{{sd_id}}.log"
-    shell:
-        """
-        minimap2 -x {params.preset} -c {params.extra} -t {threads} \
-            {input.seq1} {input.seq2} > {output.paf} 2> {log}
-        """
+def get_paf_for_sd(wildcards):
+    """Look up the precomputed PAF path for a given SD identifier."""
+    manifest = checkpoints.prepare_alignment_manifest.get().output.manifest
+    with open(manifest, encoding="utf-8") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        for row in reader:
+            if row["SD_ID"] == wildcards.sd_id:
+                return row["paf_path"]
+    raise ValueError(f"PAF path not found for {wildcards.sd_id}")
 
 # ---------------------------------------------------------------------------
 # Visualisation
@@ -136,8 +81,8 @@ rule align_sd_pair:
 rule visualize_sd:
     """Generate a plot for a single SD pair."""
     input:
-        paf = rules.align_sd_pair.output.paf,
-        filtered_sds = rules.filter_sds.output.filtered
+        paf = get_paf_for_sd,
+        sd_table = SD_TABLE
     output:
         plot = f"{OUTPUT_DIR}/plots/{{sd_id}}.png"
     params:
@@ -150,11 +95,12 @@ rule visualize_sd:
         "scripts/visualize_sd.R"
 
 def get_all_plots(wildcards):
-    """Return all expected plot paths based on the sequence manifest."""
-    manifest = checkpoints.extract_all_sequences.get().output.manifest
+    """Return all expected plot paths based on the alignment manifest."""
+    manifest = checkpoints.prepare_alignment_manifest.get().output.manifest
     if os.path.exists(manifest):
-        df = pd.read_csv(manifest, sep="\t")
-        sd_ids = df['SD_ID'].tolist()
+        with open(manifest, encoding="utf-8") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            sd_ids = [row["SD_ID"] for row in reader]
         return expand(f"{OUTPUT_DIR}/plots/{{sd_id}}.png", sd_id=sd_ids)
     return []
 
@@ -177,7 +123,7 @@ rule collect_plots:
 rule generate_report:
     """Assemble the final HTML report and ensure dependencies are complete."""
     input:
-        filtered_sds = rules.filter_sds.output.filtered,
+        sd_table = SD_TABLE,
         plots_done = rules.collect_plots.output
     output:
         report = f"{OUTPUT_DIR}/summary_report.html"
@@ -204,10 +150,8 @@ rule clean_intermediate:
     """Remove intermediate artefacts while preserving final deliverables."""
     shell:
         f"""
-        rm -rf {OUTPUT_DIR}/sequences
-        rm -rf {OUTPUT_DIR}/alignments
-        rm -f {OUTPUT_DIR}/sequence_manifest.txt
-        rm -f {OUTPUT_DIR}/sd_ids.txt
+        rm -f {OUTPUT_DIR}/alignment_manifest.tsv
+        rm -f {OUTPUT_DIR}/plots_complete.txt
         echo "Cleaned intermediate files"
         """
 
@@ -228,23 +172,15 @@ rule test_config:
 
         print(f"✓ SD calls file found: {config['sd_calls']}")
 
-        # Check assemblies configuration
-        assemblies = config.get("assemblies", {})
-        if "assembly_dir" in assemblies:
-            if os.path.exists(assemblies["assembly_dir"]):
-                print(f"✓ Assembly directory found: {assemblies['assembly_dir']}")
-            else:
-                print(f"WARNING: Assembly directory not found: {assemblies['assembly_dir']}")
-
-        # Check reference if using T2T coordinates
-        coord_system = config.get("coordinate_system", "auto")
-        reference = config.get("reference", {})
-        if coord_system in ["t2t", "auto"] and reference.get("fasta"):
-            if os.path.exists(reference["fasta"]):
-                print(f"✓ Reference genome found: {reference['fasta']}")
-            else:
-                print(f"WARNING: Reference genome not found: {reference['fasta']}")
+        # Check alignments configuration
+        alignments = config.get("alignments", {})
+        align_dir = alignments.get("dir", "data/alignments")
+        if os.path.exists(align_dir):
+            print(f"✓ Alignment directory found: {align_dir}")
+        else:
+            print(f"WARNING: Alignment directory not found: {align_dir}")
+        pattern = alignments.get("filename_pattern", "{sd_id}.paf")
+        print(f"Alignment filename pattern: {pattern}")
 
         print("\nConfiguration validation completed")
-        print(f"Maximum SD pairs to process: {config.get('max_sds', 20)}")
         print(f"Output directory: {OUTPUT_DIR}")

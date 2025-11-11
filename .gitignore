@@ -1,5 +1,6 @@
 # Output directories
 results/
+.snakemake/
 *.pyc
 __pycache__/
 

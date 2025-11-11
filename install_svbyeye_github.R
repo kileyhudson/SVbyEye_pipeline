@@ -1,24 +1,22 @@
 #!/usr/bin/env Rscript
 # Install SVbyEye package from GitHub
 
-cat("Installing remotes package...\n")
-if (!require("remotes", quietly = TRUE)) {
-    install.packages("remotes", repos="https://cloud.r-project.org")
+cat("Ensuring remotes is available...\n")
+if (!requireNamespace("remotes", quietly = TRUE)) {
+    install.packages("remotes", repos = "https://cloud.r-project.org")
 }
 
-cat("Installing dependencies...\n")
-if (!require("BiocManager", quietly = TRUE)) {
-    install.packages("BiocManager", repos="https://cloud.r-project.org")
+if (!requireNamespace("SVbyEye", quietly = TRUE)) {
+    cat("Installing SVbyEye from GitHub (dependencies handled via Conda)...\n")
+    remotes::install_github(
+        "daewoooo/SVbyEye",
+        dependencies = FALSE,
+        upgrade = "never",
+        build_vignettes = FALSE
+    )
+} else {
+    cat("SVbyEye already installed, skipping download.\n")
 }
-
-# Install Bioconductor dependencies
-BiocManager::install(c("GenomicRanges", "IRanges", "Biostrings"), update=FALSE, ask=FALSE)
-
-cat("Installing ggplot2...\n")
-install.packages("ggplot2", repos="https://cloud.r-project.org", quiet=TRUE)
-
-cat("Installing SVbyEye from GitHub...\n")
-remotes::install_github("daewoooo/SVbyEye")
 
 cat("Checking installation...\n")
 library(SVbyEye)

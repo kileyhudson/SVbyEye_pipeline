@@ -1,101 +1,114 @@
 #!/usr/bin/env python3
-"""Generate synthetic assemblies used by the automated tests."""
+"""Generate synthetic minimap2-like PAF alignments used by automated tests."""
 
+from __future__ import annotations
+
+import csv
 import os
-import random
-from typing import Iterable, Tuple
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Tuple
 
 
-def generate_random_sequence(length: int, gc_content: float = 0.5) -> str:
-    """Construct a random DNA sequence with an approximate GC content."""
+def parse_region(region: Optional[str]) -> Optional[Tuple[str, int, int]]:
+    """Parse ``chrom:start-end`` strings into structured coordinates."""
 
-    bases_gc = ["G", "C"]
-    bases_at = ["A", "T"]
+    if region in (None, "", "None"):
+        return None
 
-    num_gc = int(length * gc_content)
-    num_at = max(length - num_gc, 0)
-
-    sequence = [random.choice(bases_gc) for _ in range(num_gc)]
-    sequence.extend(random.choice(bases_at) for _ in range(num_at))
-    random.shuffle(sequence)
-    return "".join(sequence)
-
-
-def generate_similar_sequence(template: str, similarity: float = 0.95) -> str:
-    """Perturb ``template`` to achieve the requested similarity."""
-
-    if not template:
-        return template
-
-    length = len(template)
-    num_changes = int(length * (1 - similarity))
-
-    seq_list = list(template)
-    positions = random.sample(range(length), num_changes)
-    for pos in positions:
-        current = seq_list[pos]
-        bases = ["A", "T", "G", "C"]
-        bases.remove(current)
-        seq_list[pos] = random.choice(bases)
-
-    return "".join(seq_list)
+    chrom, coords = region.split(":")
+    start_str, end_str = coords.split("-")
+    start = int(start_str)
+    end = int(end_str)
+    if end < start:
+        start, end = end, start
+    return chrom, start, end
 
 
-def write_fasta(filename: str, sequences: Iterable[Tuple[str, str]]) -> None:
-    """Write one or more sequences to ``filename`` in FASTA format."""
+def region_length(region: Optional[str]) -> int:
+    """Return the length of a genomic interval string."""
 
-    with open(filename, "w", encoding="utf-8") as handle:
-        for name, seq in sequences:
-            handle.write(f">{name}\n")
-            for i in range(0, len(seq), 60):
-                handle.write(seq[i : i + 60] + "\n")
+    parsed = parse_region(region)
+    if parsed is None:
+        return 0
+    _, start, end = parsed
+    return max(end - start, 0)
+
+
+def make_paf_record(
+    sd_id: str,
+    sample: str,
+    haplotype: str,
+    query_region: Optional[str],
+    target_region: Optional[str],
+    query_label: str,
+    target_label: str,
+) -> List[str]:
+    """Construct a single PAF alignment line approximating minimap2 output."""
+
+    qlen = region_length(query_region) or 1000
+    tlen = region_length(target_region) or qlen
+
+    qname = f"{sample}_{haplotype}_{sd_id}_{query_label}"
+    tname = f"{sample}_{haplotype}_{sd_id}_{target_label}"
+
+    aln_span = min(qlen, tlen)
+    nmatch = max(aln_span - 10, int(aln_span * 0.95))
+
+    cg = f"{nmatch}={aln_span - nmatch}X" if nmatch < aln_span else f"{aln_span}="
+
+    return [
+        qname,
+        str(qlen),
+        "0",
+        str(aln_span),
+        "+",
+        tname,
+        str(tlen),
+        "0",
+        str(aln_span),
+        str(nmatch),
+        str(aln_span),
+        "60",
+        f"cg:Z:{cg}",
+    ]
+
+
+def read_sd_calls(filepath: str) -> List[Dict[str, str]]:
+    """Load the SD callset describing the synthetic test pairs."""
+
+    with open(filepath, encoding="utf-8") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        return list(reader)
 
 
 def main() -> None:
-    """Create reproducible synthetic assemblies for regression testing."""
+    """Create one PAF per SD pair defined in ``data/sd_calls.tsv``."""
 
-    random.seed(42)
-    output_dir = "data/assemblies"
-    os.makedirs(output_dir, exist_ok=True)
+    sd_calls = read_sd_calls("data/sd_calls.tsv")
+    align_dir = Path("data/alignments")
+    align_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Generating synthetic assemblies for integration tests")
+    print("Generating synthetic PAF alignments for integration tests")
+    for idx, row in enumerate(sd_calls):
+        sd_id = f"SD_{idx:05d}"
+        paf_path = align_dir / f"{sd_id}.paf"
 
-    # TEST001_hap1 – contig1
-    print("  Building TEST001_hap1")
-    contig1_seq = generate_random_sequence(60000)
-    sd1_template = contig1_seq[1000:3000]
-    contig1_seq = contig1_seq[:10000] + generate_similar_sequence(sd1_template, 0.95) + contig1_seq[12000:]
-    sd1_template2 = contig1_seq[20000:22500]
-    contig1_seq = contig1_seq[:50000] + generate_similar_sequence(sd1_template2, 0.92) + contig1_seq[52500:]
-    write_fasta(os.path.join(output_dir, "TEST001_hap1.fasta"), [("contig1", contig1_seq)])
+        records: Iterable[List[str]] = [
+            make_paf_record(sd_id, row["Sample"], row["Haplotype"], row["SD1_original"], row["SD2_original"], "SD1", "SD2"),
+            make_paf_record(sd_id, row["Sample"], row["Haplotype"], row["SD2_original"], row["SD1_original"], "SD2", "SD1"),
+        ]
 
-    # TEST001_hap2 – contig2
-    print("  Building TEST001_hap2")
-    contig2_seq = generate_random_sequence(60000)
-    template = contig2_seq[5000:7500]
-    contig2_seq = contig2_seq[:30000] + generate_similar_sequence(template, 0.94) + contig2_seq[32500:]
-    write_fasta(os.path.join(output_dir, "TEST001_hap2.fasta"), [("contig2", contig2_seq)])
+        with open(paf_path, "w", encoding="utf-8") as handle:
+            for record in records:
+                handle.write("\t".join(record) + "\n")
 
-    # TEST002_hap1 – contig3
-    print("  Building TEST002_hap1")
-    contig3_seq = generate_random_sequence(60000)
-    template = contig3_seq[15000:18000]
-    contig3_seq = contig3_seq[:45000] + generate_similar_sequence(template, 0.90) + contig3_seq[48000:]
-    write_fasta(os.path.join(output_dir, "TEST002_hap1.fasta"), [("contig3", contig3_seq)])
+        print(f"  Wrote {paf_path.relative_to(Path('.'))}")
 
-    # TEST002_hap2 – contig4
-    print("  Building TEST002_hap2")
-    contig4_seq = generate_random_sequence(60000)
-    template = contig4_seq[8000:11000]
-    contig4_seq = contig4_seq[:25000] + generate_similar_sequence(template, 0.93) + contig4_seq[28000:]
-    write_fasta(os.path.join(output_dir, "TEST002_hap2.fasta"), [("contig4", contig4_seq)])
-
-    print("Synthetic assemblies written to data/assemblies")
-    print("\nAssembly inventory:")
-    for filename in sorted(os.listdir(output_dir)):
-        filepath = os.path.join(output_dir, filename)
-        size = os.path.getsize(filepath)
-        print(f"  {filename}: {size} bytes")
+    produced = sorted(str(p.relative_to(Path("."))) for p in align_dir.glob("*.paf"))
+    print("\nSynthetic alignments:")
+    for path in produced:
+        size = os.path.getsize(path)
+        print(f"  {path} ({size} bytes)")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,33 @@
+name: svbyeye_pipeline
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - snakemake>=7.32
+  - pandas
+  - r-base=4.4.*
+  - r-biocmanager
+  - r-remotes
+  - r-ggplot2
+  - r-ggforce
+  - r-gggenes
+  - r-dplyr
+  - r-stringr
+  - r-magrittr
+  - r-data.table
+  - r-tibble
+  - r-randomcolor
+  - r-ggnewscale
+  - r-wesanderson
+  - bioconductor-biocgenerics
+  - bioconductor-s4vectors
+  - bioconductor-iranges
+  - bioconductor-genomicranges
+  - bioconductor-genomeinfodb
+  - bioconductor-genomicalignments
+  - bioconductor-biostrings
+  - bioconductor-bsgenome
+  - bioconductor-rsamtools
+  - bioconductor-xvector
+  - bioconductor-rhtslib

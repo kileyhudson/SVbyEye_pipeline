@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Assemble an HTML report describing the SVbyEye visualisation outputs."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import List
 
@@ -256,7 +254,7 @@ def _visualisation_sections(df: pd.DataFrame, plots_dir: Path) -> str:
 def main(snakemake) -> None:  # type: ignore[annotation-unchecked]
     """Render the HTML report summarising SVbyEye outputs."""
 
-    df = pd.read_csv(snakemake.input.filtered_sds, sep="\t")
+    df = pd.read_csv(snakemake.input.sd_table, sep="\t")
     output_dir = Path(snakemake.params.output_dir)
     plots_dir = output_dir / "plots"
 

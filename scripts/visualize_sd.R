@@ -10,13 +10,22 @@ suppressPackageStartupMessages({
     library(ggplot2)
 })
 
+# Simple null-coalescing helper.
+`%||%` <- function(x, y) {
+    if (is.null(x)) y else x
+}
+
 # Retrieve snakemake parameters supplied by the workflow.
 paf_file <- snakemake@input[["paf"]]
-filtered_sds_file <- snakemake@input[["filtered_sds"]]
+sd_table_file <- snakemake@input[["sd_table"]]
 output_plot <- snakemake@output[["plot"]]
 sd_id <- snakemake@params[["sd_id"]]
 svbyeye_opts <- snakemake@params[["svbyeye_opts"]]
 add_genes <- snakemake@params[["add_genes"]]
+
+if (is.null(svbyeye_opts)) {
+    svbyeye_opts <- list()
+}
 
 # Log the primary inputs for traceability.
 cat("Rendering visualisation for", sd_id, "\n")
@@ -96,8 +105,8 @@ plt <- tryCatch({
 })
 
 # Annotate the plot with metadata describing the SD pair.
-filtered_sds <- read.table(filtered_sds_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-sd_info <- filtered_sds[filtered_sds$SD_ID == sd_id, ]
+sd_table <- read.table(sd_table_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+sd_info <- sd_table[sd_table$SD_ID == sd_id, ]
 
 if (nrow(sd_info) > 0) {
     title_text <- paste0(

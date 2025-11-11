@@ -1,5 +1,5 @@
 # SVbyEye pipeline configuration
-# Adjust the parameters in this file to describe the input data, prioritisation heuristics,
+# Adjust the parameters in this file to describe the input data, alignment locations,
 # and resource requirements that apply to your analysis environment.
 
 # ---------------------------------------------------------------------------
@@ -7,62 +7,14 @@
 # ---------------------------------------------------------------------------
 
 # Path to the SD callset. The table must include Sample, Haplotype, SD1_original, and SD2_original.
-# Optional columns such as SD1_T2T, SD2_T2T, SD*_has_exon, and Gene_names enable additional filtering.
+# Optional columns such as SD1_T2T, SD2_T2T, SD*_has_exon, and Gene_names enable richer annotations.
 sd_calls: "data/sd_calls.tsv"
 
-# Assembly FASTA specification. Provide either explicit mappings from sample/haplotype to files
-# or define a directory and filename template as shown below.
-assemblies:
-  assembly_dir: "data/assemblies"
-  assembly_pattern: "{sample}_{haplotype}.fasta"
-
-# Reference genome (optional). Required when coordinate_system is set to "t2t" or "auto".
-reference:
-  fasta: null
-
-# ---------------------------------------------------------------------------
-# SD prioritisation and filtering
-# ---------------------------------------------------------------------------
-
-# Maximum number of SD pairs to visualise in a single workflow execution.
-max_sds: 5
-
-# Configure prioritisation heuristics and inclusion criteria.
-filter:
-  # Selection priority controls ordering after filtering. Options: "genes", "size", "random".
-  priority: "genes"
-
-  # Minimum average SD length (bp). Set to 0 to disable length filtering.
-  min_sd_size: 1000
-
-  # Require evidence of gene content on either SD in the pair.
-  require_genes: false
-
-  # Require successful liftover to the reference coordinate system.
-  require_t2t_liftover: false
-
-  # Optional restrictions to specific samples or haplotypes. Leave empty to include all values present in the callset.
-  samples: []
-  haplotypes: []
-
-# ---------------------------------------------------------------------------
-# Coordinate system selection
-# ---------------------------------------------------------------------------
-
-# Options:
-#   - "contig": always use SD*_original coordinates.
-#   - "t2t": always use SD*_T2T coordinates (requires reference.fasta).
-#   - "auto": prefer SD*_T2T when both pairs are available, otherwise fall back to contig coordinates.
-coordinate_system: "contig"
-
-# ---------------------------------------------------------------------------
-# Alignment parameters
-# ---------------------------------------------------------------------------
-
-# minimap2 settings used by the alignment rule.
-minimap2:
-  preset: "asm20"
-  extra_params: "--eqx --secondary=no"
+# Precomputed PAF alignments generated with minimap2 `-c --eqx` (or equivalent).
+# `filename_pattern` supports formatting fields: {sd_id}, {sample}, {haplotype}.
+alignments:
+  dir: "data/alignments"
+  filename_pattern: "{sd_id}.paf"
 
 # ---------------------------------------------------------------------------
 # Visualisation parameters
@@ -98,9 +50,7 @@ generate_report: true
 # ---------------------------------------------------------------------------
 
 threads:
-  minimap2: 4
   default: 1
 
 memory:
-  minimap2: "8G"
   default: "4G"
