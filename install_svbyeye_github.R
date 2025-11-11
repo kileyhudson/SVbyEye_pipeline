@@ -137,23 +137,41 @@ if (length(missing_bioc) > 0) {
 }
 cat("\n")
 
+# Replace Step 6 with this version that shows errors:
+
 # ---------------------------------------------------------------------------
 # Step 6: Install SVbyEye from GitHub
 # ---------------------------------------------------------------------------
 
 cat("Step 6: Installing SVbyEye from GitHub...\n")
 cat("  Source: https://github.com/daewoooo/SVbyEye\n")
-cat("  This may take 1-2 minutes...\n")
+cat("  This may take 1-2 minutes...\n\n")
 
-remotes::install_github(
-    "daewoooo/SVbyEye",
-    dependencies = FALSE,  # We handled dependencies already
-    upgrade = "never",
-    build_vignettes = FALSE,
-    quiet = TRUE
-)
+# Try installation with error capture
+install_result <- tryCatch({
+    remotes::install_github(
+        "daewoooo/SVbyEye",
+        dependencies = FALSE,  # We handled dependencies already
+        upgrade = "never",
+        build_vignettes = FALSE,
+        quiet = FALSE  # SHOW ERRORS
+    )
+    TRUE
+}, error = function(e) {
+    cat("  ✗ Installation error:\n")
+    cat("  ", conditionMessage(e), "\n\n", sep = "")
+    FALSE
+}, warning = function(w) {
+    cat("  ⚠ Installation warning:\n")
+    cat("  ", conditionMessage(w), "\n\n", sep = "")
+    TRUE
+})
 
-cat("  ✓ SVbyEye installed\n\n")
+if (install_result) {
+    cat("  ✓ SVbyEye installation attempted\n\n")
+} else {
+    cat("  ✗ SVbyEye installation failed\n\n")
+}
 
 # ---------------------------------------------------------------------------
 # Step 7: Verify installation
