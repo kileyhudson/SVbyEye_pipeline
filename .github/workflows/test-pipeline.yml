@@ -44,6 +44,8 @@ jobs:
         auto-activate-base: false
 
     - name: Install SVbyEye
+      env:
+        GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       run: Rscript install_svbyeye_github.R
 
     - name: Verify installation
