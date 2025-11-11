@@ -55,6 +55,13 @@ jobs:
         snakemake --version
         Rscript -e "library(SVbyEye); cat('SVbyEye version:', as.character(packageVersion('SVbyEye')), '\n')"
 
+    - name: Setup test configuration
+      run: |
+        # Use test data for CI runs
+        cp data/sd_calls_test.tsv data/sd_calls.tsv
+        # Update config to use test PAF naming pattern
+        sed -i 's|filename_pattern: "{sample}_{haplotype}_alignments.paf"|filename_pattern: "{sd_id}.paf"|' config.yaml
+
     - name: Validate config
       run: python -c "import yaml; yaml.safe_load(open('config.yaml')); print('✓ Config valid')"
 
