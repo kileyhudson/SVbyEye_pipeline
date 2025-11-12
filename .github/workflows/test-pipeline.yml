@@ -59,6 +59,8 @@ jobs:
         echo "✓ Environment created successfully"
 
     - name: Install SVbyEye using setup script
+      env:
+        GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }} 
       run: |
         # Activate environment and run SVbyEye installation (what setup.sh does)
         conda activate svbyeye_pipeline
