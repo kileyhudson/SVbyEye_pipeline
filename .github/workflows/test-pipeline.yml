@@ -33,49 +33,89 @@ jobs:
           libharfbuzz-dev \
           libfribidi-dev
 
-    - name: Setup Miniforge
+    - name: Bootstrap Miniforge (minimal setup for setup.sh)
       uses: conda-incubator/setup-miniconda@v3
       with:
         miniforge-variant: Miniforge3
         miniforge-version: latest
-        activate-environment: svbyeye_pipeline
-        environment-file: environment.yml
-        use-mamba: true
         auto-activate-base: false
 
-    - name: Install SVbyEye
-      env:
-        GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      run: Rscript install_svbyeye.R
-
-    - name: Verify installation
+    - name: Run setup script to create environment
       run: |
+        # Use mamba for speed
+        export SOLVER="mamba"
+        
+        echo "========================================="
+        echo "Running pipeline setup (from setup.sh logic)"
+        echo "========================================="
+        
+        # Remove any existing environment
+        mamba env remove -n svbyeye_pipeline -y 2>/dev/null || true
+        
+        # Create environment from environment.yml (what setup.sh does)
+        echo "Creating conda environment..."
+        mamba env create -f environment.yml
+        
+        echo "✓ Environment created successfully"
+
+    - name: Install SVbyEye using setup script
+      run: |
+        # Activate environment and run SVbyEye installation (what setup.sh does)
+        conda activate svbyeye_pipeline
+        
+        echo "Installing SVbyEye from GitHub..."
+        Rscript install_svbyeye.R
+        
+        echo "✓ SVbyEye installation complete"
+
+    - name: Verify installation (validates setup worked)
+      run: |
+        conda activate svbyeye_pipeline
+        
+        echo "=== Verifying Setup ==="
         python --version
         R --version
         snakemake --version
         Rscript -e "library(SVbyEye); cat('SVbyEye version:', as.character(packageVersion('SVbyEye')), '\n')"
+        echo "✓ All tools available"
 
     - name: Setup test configuration
       run: |
+        conda activate svbyeye_pipeline
+        
         # Use test data for CI runs
-        cp data/sd_calls_test.tsv data/sd_calls.tsv
+        echo "Configuring for test data..."
+        cp -f data/sd_calls_test.tsv data/sd_calls.tsv
+        
         # Update config to use test PAF naming pattern
         sed -i 's|filename_pattern: "{sample}_{haplotype}_alignments.paf"|filename_pattern: "{sd_id}.paf"|' config.yaml
+        
+        echo "✓ Test configuration applied"
 
     - name: Validate config
-      run: python -c "import yaml; yaml.safe_load(open('config.yaml')); print('✓ Config valid')"
+      run: |
+        conda activate svbyeye_pipeline
+        python -c "import yaml; yaml.safe_load(open('config.yaml')); print('✓ Config valid')"
 
     - name: Create test data
-      run: python scripts/create_test_data.py
+      run: |
+        conda activate svbyeye_pipeline
+        python scripts/create_test_data.py
 
     - name: Dry run pipeline
-      run: snakemake --dry-run --cores 1
+      run: |
+        conda activate svbyeye_pipeline
+        snakemake --dry-run --cores 1
 
     - name: Run full pipeline
-      run: snakemake --cores 2
+      run: |
+        conda activate svbyeye_pipeline
+        snakemake --cores 2
 
     - name: Verify outputs
       run: |
+        conda activate svbyeye_pipeline
+        
         echo "=== Pipeline Outputs ==="
         ls -lh results/sd_table.tsv
         ls -lh results/alignment_manifest.tsv
@@ -85,6 +125,8 @@ jobs:
 
     - name: Check plot generation
       run: |
+        conda activate svbyeye_pipeline
+        
         PLOT_COUNT=$(ls results/plots/*.png 2>/dev/null | wc -l)
         echo "Plots generated: $PLOT_COUNT"
         test "$PLOT_COUNT" -gt 0 || exit 1
@@ -92,7 +134,9 @@ jobs:
 
     - name: Display summary
       if: always()
-      run: test -f results/sd_summary.txt && cat results/sd_summary.txt || echo "No summary file"
+      run: |
+        conda activate svbyeye_pipeline
+        test -f results/sd_summary.txt && cat results/sd_summary.txt || echo "No summary file"
 
     - name: Upload results
       uses: actions/upload-artifact@v4
