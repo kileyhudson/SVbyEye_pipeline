@@ -56,11 +56,13 @@ if [ -n "${CONDA_BASE}" ] && [ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]; then
     # Install SVbyEye R package
     Rscript install_svbyeye_github.R
     
-    # Check if snakemake installation is functional
+    # Check if snakemake installation is functional by testing the actual import
     echo ""
     echo "Verifying snakemake installation..."
-    if ! snakemake --version >/dev/null 2>&1; then
-        echo "⚠️  WARNING: Conda snakemake appears to be broken"
+    
+    # Test the Python import that actually fails on broken installations
+    if ! python -c "from snakemake.cli import main" >/dev/null 2>&1; then
+        echo "⚠️  WARNING: Conda snakemake is broken (Python import failed)"
         echo "This can happen on some HPC systems."
         echo ""
         
@@ -113,7 +115,29 @@ if [ -z "$ENV_PATH" ]; then
     return 1 2>/dev/null || exit 1
 fi
 
-# Add environment to PATH
+# Check if svbyeye_pipeline has a working snakemake
+SNAKEMAKE_WORKS=false
+if [ -f "${ENV_PATH}/bin/snakemake" ]; then
+    # Test if it actually works (not just if the binary exists)
+    if "${ENV_PATH}/bin/python" -c "from snakemake.cli import main" >/dev/null 2>&1; then
+        SNAKEMAKE_WORKS=true
+    fi
+fi
+
+# If snakemake is broken, try to find snakemake_plus (common on HPC clusters)
+if [ "$SNAKEMAKE_WORKS" = "false" ]; then
+    SNAKEMAKE_PLUS=$(conda env list 2>/dev/null | grep "^snakemake_plus " | awk '{print $NF}')
+    if [ -z "$SNAKEMAKE_PLUS" ]; then
+        SNAKEMAKE_PLUS=$(mamba env list 2>/dev/null | grep "^snakemake_plus " | awk '{print $NF}')
+    fi
+    
+    # Add snakemake_plus to PATH first if it exists
+    if [ -n "$SNAKEMAKE_PLUS" ] && [ -d "${SNAKEMAKE_PLUS}/bin" ]; then
+        export PATH="${SNAKEMAKE_PLUS}/bin:$PATH"
+    fi
+fi
+
+# Add svbyeye_pipeline environment to PATH (for R and Python)
 export PATH="${ENV_PATH}/bin:$PATH"
 
 # Clear bash command cache
@@ -127,7 +151,8 @@ echo "  Python: $(which python)"
 echo "  R: $(which R)"
 
 if command -v snakemake >/dev/null 2>&1; then
-    echo "  Snakemake: $(which snakemake) ($(snakemake --version 2>/dev/null || echo 'version check failed'))"
+    SNAKEMAKE_VERSION=$(snakemake --version 2>/dev/null || echo 'unknown')
+    echo "  Snakemake: $(which snakemake) (${SNAKEMAKE_VERSION})"
 else
     echo "  Snakemake: NOT FOUND"
     echo ""
