@@ -1,75 +1,115 @@
 # SVbyEye Pipeline
 
-The SVbyEye pipeline automates the selection, alignment, and visualization of segmental duplication (SD) pairs using the [SVbyEye](https://github.com/daewoooo/SVbyEye) R package. It is designed for comparative genomics teams that require reproducible, well-documented summaries of SD structure across assemblies and reference genomes.
+The SVbyEye pipeline is a Snakemake workflow that turns a curated list of segmental duplication (SD) pairs and pre-computed PAF alignments into plots and an optional HTML report using the [SVbyEye](https://github.com/daewoooo/SVbyEye) R package. It is designed to sit downstream of your own SD discovery process and assumes that the alignments you want to visualise already exist.
 
-## Key Capabilities
+## Repository Contents
 
-- Assigns stable SD identifiers and derives helper metadata (sizes, optional liftover context) without altering your curated list.
-- Validates precomputed PAF alignments (generated upstream with minimap2 or an equivalent tool) and records provenance in a manifest.
-- Renders publication-ready plots with SVbyEye directly from the supplied PAF files.
-- Produces an HTML report that consolidates summary statistics and plot artifacts for rapid review.
-- Provides an end-to-end Snakemake workflow with checkpoints, logging, and automated testing hooks.
+- `Snakefile` – defines the end-to-end workflow.
+- `config.yaml` – configuration template describing inputs, plotting options, and resource hints.
+- `scripts/prepare_sd_table.py` – assigns stable SD identifiers and derived metadata.
+- `scripts/prepare_alignment_manifest.py` – validates that every SD pair has an accompanying PAF file and records the path.
+- `scripts/visualize_sd.R` – renders one PNG plot per SD using SVbyEye.
+- `scripts/generate_report.py` – assembles an HTML summary that embeds the plots.
+- `scripts/create_test_data.py` – produces synthetic PAF files that match the bundled example SD callset.
+- `environment.yml` – conda environment specification with Snakemake, Python, R, and the libraries required by SVbyEye.
+- `install_svbyeye.R` – helper script that installs SVbyEye and its R dependencies from CRAN/Bioconductor/GitHub.
 
 ## Requirements
 
-- **Operating system:** Linux or macOS.
-- **Core tools:** [Snakemake](https://snakemake.readthedocs.io/), Python ≥3.9, and R ≥4.2 with the SVbyEye dependencies.
-- **Optional:** `minimap2` (or your preferred aligner) for generating the PAF files consumed by this workflow, plus `conda`/`mamba` for environment management.
+- Linux or macOS shell environment.
+- Conda or Mamba for environment management (recommended for reproducing the workflow environment).
+- Ability to install Snakemake ≥7.32, Python 3.11, R 4.4, and the SVbyEye package (all provided through `environment.yml`).
+- Pre-computed PAF files generated with minimap2 (or another aligner that emits a `cg` tag).
 
-The `setup.sh` script and the `install_svbyeye*.R` helpers provide reference installation steps for common environments.
+## Environment Setup
 
-## Getting Started
-
-1. **Clone the repository** and create the reproducible Conda environment (mamba recommended for speed):
+1. Clone this repository and move into the checkout.
+2. Create the analysis environment (using mamba for speed if available):
    ```bash
-   mamba env create -f environment.yml     # or: conda env create -f environment.yml
+   mamba env create -f environment.yml  # or: conda env create -f environment.yml
    conda activate svbyeye_pipeline
-   Rscript install_svbyeye_github.R
    ```
-2. **Prepare input data**
-   - Place a tab-delimited SD callset at `data/sd_calls.tsv`. The table must include at least `Sample`, `Haplotype`, `SD1_original`, and `SD2_original`. Optional columns such as `SD*_T2T`, `SD*_has_exon`, and `Gene_names` enable richer annotations.
-   - Generate minimap2 PAF alignments for every SD pair that will be visualized (ensure `-c --eqx` or equivalent so the `cg` tag is present) and store them under `data/alignments/` or your preferred directory.
-3. **Configure the analysis** by editing `config.yaml`. At minimum update `sd_calls`, set the `alignments` block to match your directory/pattern, and review the metadata/visualization parameters.
-4. **Dry-run the workflow** to verify rule resolution:
+3. Install SVbyEye and its dependencies:
+   ```bash
+   Rscript install_svbyeye.R
+   ```
+   The script detects missing CRAN/Bioconductor packages, installs them if needed, and then retrieves SVbyEye from GitHub.
+
+The `setup.sh` helper mirrors these steps and additionally generates `activate_pipeline.sh`. If you choose to run it, update the embedded R command to `Rscript install_svbyeye.R` first—the script still references the historical filename `install_svbyeye_github.R`.
+
+## Input Preparation
+
+1. **Segmental duplication table (`sd_calls`)**
+   - Provide a tab-delimited file (default: `data/sd_calls.tsv`).
+   - Required columns: `Sample`, `Haplotype`, `SD1_original`, `SD2_original` (formatted as `chrom:start-end`).
+   - Optional columns that unlock richer summaries: `Gene_names`, `SD1_T2T`, `SD2_T2T`, `SD1_has_exon`, `SD2_has_exon`.
+2. **PAF alignments**
+   - Generate one minimap2 (or equivalent) PAF file per SD pair using parameters that emit the `cg` tag (e.g. `-c --eqx`).
+   - Place the files in a directory of your choosing (default: `data/alignments`).
+   - Update `config.yaml` → `alignments.filename_pattern` so the workflow can find each file. Supported placeholders are `{sd_id}`, `{sample}`, `{haplotype}`, and `{index}` (zero-based index padded to five digits).
+
+For testing or demos, run `python scripts/create_test_data.py` after populating `data/sd_calls.tsv`; it will fabricate simple PAF records that match each SD pair.
+
+## Configuring the Workflow
+
+Edit `config.yaml` to point at your inputs and tune plotting behaviour:
+
+- `sd_calls`: path to the SD table described above.
+- `alignments`: `dir` and `filename_pattern` controlling where PAF files are discovered.
+- `svbyeye`: plotting knobs consumed by `scripts/visualize_sd.R` (colour scheme, bin size, indel highlighting, figure dimensions, etc.).
+- `add_gene_annotations`: when `true`, the plotting script will log a reminder if gene annotations are requested (actual overlays are not yet implemented).
+- `output_dir`: directory that will receive all generated artefacts (default `results/`).
+- `generate_report`: toggle HTML report creation; disable if you only want the tables and plots.
+- `threads` / `memory`: optional Snakemake resource hints for cluster execution.
+
+Run the built-in sanity check before launching the workflow:
+```bash
+snakemake test_config
+```
+This rule verifies that the configured SD table exists and echoes the resolved alignment directory/pattern.
+
+## Running the Pipeline
+
+1. Perform a dry run to ensure every rule resolves correctly:
    ```bash
    snakemake -n
    ```
-5. **Execute the pipeline** once the configuration is validated (the environment above provides every dependency):
+2. Execute the workflow once satisfied with the configuration:
    ```bash
    snakemake --cores 4
    ```
-   _Tip:_ Keep the `svbyeye_pipeline` environment activated whenever you run Snakemake or auxiliary scripts so that the bundled R/Python binaries are used.
-6. **Review the outputs** in the directory specified by `output_dir` (default: `results/`). Key artifacts include:
-   - `sd_table.tsv`: SD metadata table with assigned identifiers and derived sizes.
-   - `sd_summary.txt`: quick QC readout listing SD IDs and T2T availability.
-   - `alignment_manifest.tsv`: validation log tying SD IDs to the backing PAF paths.
-   - `data/alignments/*.paf` (or your configured directory): pairwise alignments supplied to the workflow.
-   - `plots/*.png` (and optionally `.pdf`): visual summaries generated by SVbyEye.
-   - `summary_report.html`: consolidated statistics and figures.
+   Adjust the core count to match your environment.
 
-## Configuration Overview
+The default `all` target produces the SD metadata table and, when enabled, the HTML summary report. Invoke `snakemake all_plots` if you only want the individual PNG figures.
 
-`config.yaml` governs pipeline behavior. Important sections include:
+## Outputs
 
-- **Input definition:** `sd_calls` declares the SD callset, while `alignments.dir`/`alignments.filename_pattern` describe where the precomputed PAF files live.
-- **Visualization:** `svbyeye` options configure binning, highlighting, and output format. `add_gene_annotations` toggles support for future gene overlays.
-- **Execution resources:** `threads` and `memory` dictionaries specify resource hints for Snakemake rules.
+All deliverables land under `output_dir` (default `results/`):
 
-All configuration options are documented inline within `config.yaml`.
+- `sd_table.tsv` – enriched SD table with `SD_ID`, per-interval lengths, and the average size column.
+- `sd_summary.txt` – concise text summary listing every SD identifier and T2T availability.
+- `alignment_manifest.tsv` – mapping between each `SD_ID` and the validated PAF path.
+- `plots/<SD_ID>.png` – one SVbyEye plot per SD (PNG format).
+- `plots_complete.txt` – marker file emitted when all plots are generated.
+- `summary_report.html` – optional report combining metadata and plots (only when `generate_report: true`).
+- `logs/` – Snakemake log files keyed by rule.
 
-## Workflow Summary
+Use `snakemake clean` to remove every generated file, or `snakemake clean_intermediate` to keep the final tables/plots while deleting the manifest and completion marker.
 
-The Snakefile orchestrates the following stages:
+## Workflow Details
 
-1. **SD preparation (`prepare_sd_table`)** – assigns SD IDs and derives helper metadata while preserving every row in the callset.
-2. **Alignment manifest (`prepare_alignment_manifest`)** – validates that every SD has a corresponding PAF file and records the file paths.
-3. **Visualization (`visualize_sd`)** – creates SVbyEye plots for each SD using the supplied PAF alignments.
-4. **Reporting (`generate_report`)** – collates metadata and plots into an HTML summary.
+The Snakefile defines the following rule order:
 
-## Testing and Continuous Integration
+1. `prepare_sd_table` – reads the SD callset, assigns sequential `SD_ID`s (`SD_00000`, `SD_00001`, …), calculates per-interval sizes, and writes both the enriched table and a text summary.
+2. `prepare_alignment_manifest` (checkpoint) – checks that a PAF exists for each SD using the configured directory/pattern. Missing files trigger an error before plotting begins.
+3. `visualize_sd` – renders PNG plots through SVbyEye. Empty PAFs produce an explicit placeholder image so downstream steps still complete.
+4. `collect_plots` – waits for every plot and records the list into `plots_complete.txt`.
+5. `generate_report` – builds `summary_report.html` using the SD metadata and the generated PNG files.
 
-A GitHub Actions workflow (`.github/workflows/test-pipeline.yml`) demonstrates how to run the pipeline in a continuous integration context. Triggering the workflow executes the full Snakemake pipeline on bundled test data and uploads the resulting artifacts.
+## Continuous Integration
 
-## Support
+The GitHub Actions workflow at `.github/workflows/test-pipeline.yml` demonstrates a full automated run: it creates the conda environment, installs SVbyEye, replaces the default SD table with bundled test data, fabricates alignments with `scripts/create_test_data.py`, and executes the workflow end-to-end. Use it as a reference for adapting the pipeline to your infrastructure.
 
-For questions about SVbyEye plotting semantics, consult the upstream [SVbyEye documentation](https://github.com/daewoooo/SVbyEye). Issues specific to this pipeline can be raised via the repository issue tracker.
+## Getting Help
+
+If you run into issues with the SVbyEye plotting functions themselves, consult the upstream [SVbyEye documentation](https://github.com/daewoooo/SVbyEye). For questions about this workflow (configuration, Snakemake rules, or automation), open an issue in this repository.
