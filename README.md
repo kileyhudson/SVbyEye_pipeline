@@ -55,7 +55,7 @@ The `setup.sh` script and the `install_svbyeye*.R` helpers provide reference ins
 - **Visualization:** `svbyeye` options configure binning, highlighting, and output format. `add_gene_annotations` toggles support for future gene overlays.
 - **Execution resources:** `threads` and `memory` dictionaries specify resource hints for Snakemake rules.
 
-All configuration options are documented inline within `config.yaml` for ease of maintenance.
+All configuration options are documented inline within `config.yaml`.
 
 ## Workflow Summary
 
@@ -66,17 +66,9 @@ The Snakefile orchestrates the following stages:
 3. **Visualization (`visualize_sd`)** – creates SVbyEye plots for each SD using the supplied PAF alignments.
 4. **Reporting (`generate_report`)** – collates metadata and plots into an HTML summary.
 
-Auxiliary rules support data cleanup, configuration checks, and collection of generated plots. The `scripts/create_test_data.py` helper now builds synthetic PAF fixtures that mimic the minimap2 output required by SVbyEye, so no FASTA assets are bundled with the repository.
-
 ## Testing and Continuous Integration
 
-A GitHub Actions workflow (`.github/workflows/test-pipeline.yml`) demonstrates how to run the pipeline in a continuous integration context. Triggering the workflow executes the full Snakemake pipeline on bundled test data and uploads the resulting artifacts. Adapt the workflow to mirror your production environment or to validate changes before deployment.
-
-## Contributing
-
-- Follow the code style documented in the repository (PEP 8 for Python, tidyverse style for R) and keep comments concise, descriptive, and oriented toward scientific interpretation.
-- Update tests and documentation when modifying workflow logic or configuration interfaces.
-- Use descriptive commit messages and Pull Request descriptions that summarize both functional changes and scientific context.
+A GitHub Actions workflow (`.github/workflows/test-pipeline.yml`) demonstrates how to run the pipeline in a continuous integration context. Triggering the workflow executes the full Snakemake pipeline on bundled test data and uploads the resulting artifacts.
 
 ## Support
 
